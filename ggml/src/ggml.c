@@ -6367,6 +6367,9 @@ static void ggml_compute_backward(
             if (src1_needs_grads) {
                 struct ggml_tensor * tmp = grad;
                 if (!ggml_are_same_shape(src0, src1)) {
+                    if (!ggml_is_contiguous(tmp)) {
+                        tmp = ggml_cont(ctx, tmp);
+                    }
                     tmp = ggml_repeat_back(ctx, tmp, src1);
                 }
                 ggml_add_or_set(ctx, cgraph, isrc1, tmp);
@@ -6412,6 +6415,9 @@ static void ggml_compute_backward(
             if (src1_needs_grads) {
                 struct ggml_tensor * tmp = ggml_mul(ctx, src0, grad);
                 if (!ggml_are_same_shape(src0, src1)) {
+                    if (!ggml_is_contiguous(tmp)) {
+                        tmp = ggml_cont(ctx, tmp);
+                    }
                     tmp = ggml_repeat_back(ctx, tmp, src1);
                 }
                 ggml_add_or_set(ctx, cgraph, isrc1, tmp);
@@ -6467,7 +6473,11 @@ static void ggml_compute_backward(
         } break;
         case GGML_OP_REPEAT: {
             if (src0_needs_grads) {
-                ggml_add_or_set(ctx, cgraph, isrc0, ggml_repeat_back(ctx, grad, src0));
+                struct ggml_tensor * tmp_grad = grad;
+                if (!ggml_is_contiguous(tmp_grad)) {
+                    tmp_grad = ggml_cont(ctx, tmp_grad);
+                }
+                ggml_add_or_set(ctx, cgraph, isrc0, ggml_repeat_back(ctx, tmp_grad, src0));
             }
         } break;
         case GGML_OP_REPEAT_BACK: {
@@ -6515,6 +6525,9 @@ static void ggml_compute_backward(
                     const size_t nb3 = tmp->nb[2];
 
                     tmp = ggml_view_4d(ctx, tmp, src0->ne[0], src0->ne[1], src0->ne[2], nr2, tmp->nb[1], nb2, nb3, 0);
+                    if (!ggml_is_contiguous(tmp)) {
+                        tmp = ggml_cont(ctx, tmp);
+                    }
                     tmp = ggml_repeat_back(ctx, tmp, src0);
                 }
                 ggml_add_or_set(ctx, cgraph, isrc0, tmp);
