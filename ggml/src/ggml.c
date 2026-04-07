@@ -2546,6 +2546,16 @@ struct ggml_tensor * ggml_repeat_back(
         struct ggml_tensor  * b) {
     GGML_ASSERT(ggml_can_repeat(b, a));
 
+    // The CPU forward op asserts nb[0] == sizeof(type) (it doesn't yet
+    // support transposed/permuted inputs — see TODO in
+    // ggml_compute_forward_repeat_back_f32). Wrap non-contiguous src in
+    // ggml_cont to guarantee the invariant regardless of where this op is
+    // built from. Stronger than the per-call-site cont wraps in
+    // ggml_compute_backward, which only catch ADD/MUL/REPEAT/MUL_MAT.
+    if (a->nb[0] != ggml_type_size(a->type)) {
+        a = ggml_cont(ctx, a);
+    }
+
     struct ggml_tensor * result = ggml_new_tensor(ctx, a->type, GGML_MAX_DIMS, b->ne);
 
     result->op     = GGML_OP_REPEAT_BACK;
@@ -6649,12 +6659,18 @@ static void ggml_compute_backward(
                 axb[axis1] = 1;
                 axb[axis2] = 2;
                 axb[axis3] = 3;
-                ggml_add_or_set(ctx, cgraph, isrc0, ggml_permute(ctx, grad, axb[0], axb[1], axb[2], axb[3]));
+                // Wrap in cont — ggml_permute produces a non-contiguous view
+                // and downstream binary ops assert nb00 == sizeof(type).
+                ggml_add_or_set(ctx, cgraph, isrc0,
+                    ggml_cont(ctx, ggml_permute(ctx, grad, axb[0], axb[1], axb[2], axb[3])));
             }
         } break;
         case GGML_OP_TRANSPOSE: {
             if (src0_needs_grads) {
-                ggml_add_or_set(ctx, cgraph, isrc0, ggml_transpose(ctx, grad));
+                // Wrap in cont — ggml_transpose produces a non-contiguous view
+                // and downstream binary ops assert nb00 == sizeof(type).
+                ggml_add_or_set(ctx, cgraph, isrc0,
+                    ggml_cont(ctx, ggml_transpose(ctx, grad)));
             }
         } break;
         case GGML_OP_GET_ROWS: {
